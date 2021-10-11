@@ -30,16 +30,19 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <signal.h>
 
 #include "bcm_host.h"
 #include "ilclient.h"
+
+COMPONENT_T *video_render = NULL;
 
 static int video_decode_test(char *filename, int loop)
 {
    OMX_VIDEO_PARAM_PORTFORMATTYPE format;
    OMX_TIME_CONFIG_CLOCKSTATETYPE cstate;
-   COMPONENT_T *video_decode = NULL, *video_scheduler = NULL, *video_render = NULL, *clock = NULL;
    COMPONENT_T *list[5];
+   COMPONENT_T *video_decode = NULL, *video_scheduler = NULL, *clock = NULL;
    TUNNEL_T tunnel[4];
    ILCLIENT_T *client;
    FILE *in;
@@ -226,9 +229,24 @@ void error_usage(char* name) {
    exit(1);
 }
 
+void sig_usr1(int signum){
+  printf("PAUSE");
+  ilclient_change_component_state(video_render, OMX_StatePause);
+}
+
+void sig_usr2(int signum){
+  printf("RESUME");
+  ilclient_change_component_state(video_render, OMX_StateExecuting);
+}
+
+
+
 int main (int argc, char **argv)
 {
    int loop = 0;
+
+   signal(SIGUSR1,sig_usr1); // Register signal handler
+   signal(SIGUSR2,sig_usr2);
 
    if (argc < 2 || argc > 3) {
       error_usage(argv[0]);
