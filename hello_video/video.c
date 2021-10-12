@@ -37,7 +37,7 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 COMPONENT_T *video_render = NULL;
 
-static int video_decode_test(char *filename, int loop)
+static int video_decode_test(char *filename, int loop, int layer, int x, int y, int height, int width)
 {
    OMX_VIDEO_PARAM_PORTFORMATTYPE format;
    OMX_TIME_CONFIG_CLOCKSTATETYPE cstate;
@@ -100,6 +100,29 @@ static int video_decode_test(char *filename, int loop)
    set_tunnel(tunnel, video_decode, 131, video_scheduler, 10);
    set_tunnel(tunnel+1, video_scheduler, 11, video_render, 90);
    set_tunnel(tunnel+2, clock, 80, video_scheduler, 12);
+
+   // set region and layer
+   OMX_CONFIG_DISPLAYREGIONTYPE region;
+   memset(&region, 0, sizeof(OMX_CONFIG_DISPLAYREGIONTYPE));
+   region.nSize = sizeof(OMX_CONFIG_DISPLAYREGIONTYPE);
+   region.nVersion.nVersion = OMX_VERSION;
+   region.nPortIndex = 90;
+   region.layer = layer;
+   region.fullscreen = OMX_FALSE;
+   region.dest_rect.x_offset = x;
+   region.dest_rect.y_offset = y;
+   region.dest_rect.height = height;
+   region.dest_rect.width = width;
+   region.set |= OMX_DISPLAY_SET_LAYER;
+   // set destrect only if height and width are non-null
+   if ( height && width ) {
+     region.set |= OMX_DISPLAY_SET_DEST_RECT;
+     region.set |= OMX_DISPLAY_SET_FULLSCREEN;
+   }
+
+   if( video_render != NULL &&
+       OMX_SetParameter(ILC_GET_HANDLE(video_render), OMX_IndexConfigDisplayRegion, &region) != OMX_ErrorNone)
+      status = -40;
 
    // setup clock tunnel first
    if(status == 0 && ilclient_setup_tunnel(tunnel+2, 0, 0) != 0)
@@ -244,35 +267,56 @@ void sig_usr2(int signum){
 int main (int argc, char **argv)
 {
    int loop = 0;
+   int layer = 1;
+   int x = 0;
+   int y = 0;
+   int height = 0;
+   int width = 0;
 
    signal(SIGUSR1,sig_usr1); // Register signal handler
    signal(SIGUSR2,sig_usr2);
 
-   if (argc < 2 || argc > 3) {
-      error_usage(argv[0]);
-   }
-   // Check optional parameter.
-   if (argc == 3) {
-    // Check for loop parameter.
-    if (strncmp(argv[1], "--loop", 6) == 0) {
-        loop = -1;
-        if (strncmp(argv[1], "--loop=", 7) == 0){
-            if (strlen(argv[1]) <= 7){
-                error_usage(argv[0]);
-            }else{
-                char *tmp = argv[1];
-                tmp += 7;
-                loop = atoi(tmp);
-            }
-        }
-    }
-      // Error unknown parameter.
-      else {
-         error_usage(argv[0]);
+   int oc;             /* option character */
+   // char *b_opt_arg;
+
+   while ((oc = getopt(argc, argv, "il:x:y:h:w:")) != -1) {
+      switch (oc) {
+      case 'i':
+         /* -i: loop indefinitely */
+         loop = -1;
+         break;
+      case 'l':
+         /* -l: layer number  */
+         layer = atoi(optarg);
+         break;
+      case 'x':
+         x = atoi(optarg);
+         break;
+      case 'y':
+         y = atoi(optarg);
+         break;
+      case 'h':
+         height = atoi(optarg);
+         break;
+      case 'w':
+         width = atoi(optarg);
+         break;
+      case ':':
+          /* missing option argument */
+          fprintf(stderr, "%s: option '-%c' requires an argument\n",
+                  argv[0], optopt);
+          break;
+      case '?':
+      default:
+         /* invalid option */
+         fprintf(stderr, "%s: option '-%c' is invalid: ignored\n",
+                 argv[0], optopt);
+         break;
       }
    }
+ 
    bcm_host_init();
-   return video_decode_test(argv[argc-1], loop);
+   return video_decode_test(argv[argc-1], loop, layer, x, y, height, width);
 }
 
 
